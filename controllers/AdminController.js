@@ -29,8 +29,18 @@ exports.getAllAchievers = async (req, res) => {
 
 exports.getAllDepositRequests = async (req, res) => {
     try {
-        const depositRequests = await DepositRequests.find();
+        const depositRequests = await DepositRequests.find().populate('user','_id name username email');
         res.status(200).json(depositRequests);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
+
+// Get all users
+exports.getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find();
+        res.status(200).json(users);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

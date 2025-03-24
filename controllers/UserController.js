@@ -144,7 +144,8 @@ exports.login = async (req, res) => {
             downlines: user.downlines,
             referralCode: user.referralCode,
             rewards: user.rewards,
-            sponsor: user.sponsor
+            sponsor: user.sponsor,
+            isAdmin: user.isAdmin
         } });
     } catch (error) {
         res.status(500).json({ message: error.message });
