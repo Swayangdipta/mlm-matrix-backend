@@ -4,6 +4,7 @@ const Achiever = require('../models/Acheiver');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const DepositRequests = require('../models/DepositRequests');
+const { default: mongoose } = require('mongoose');
 
 // Helper function to distribute earnings to uplines
 const distributeEarnings = async (userId) => {
@@ -196,24 +197,44 @@ exports.getDashboard = async (req, res) => {
 // Get User Tree
 exports.getUserTree = async (req, res) => {
     const { userId } = req.params;
-
+    console.log(userId);
+    
     try {
-        const user = await User.findById(userId).populate({
-            path: 'downlines',
-            populate: {
-                path: 'downlines',
-                populate: {
-                    path: 'downlines',
-                    populate: {
-                        path: 'downlines'
-                    }
-                }
-            }
+        const userTree = await User.aggregate([
+            { $match: { _id: new mongoose.Types.ObjectId(userId) } },
+            {
+                $graphLookup: {
+                    from: "users", // Collection name
+                    startWith: "$downlines",
+                    connectFromField: "downlines",
+                    connectToField: "_id",
+                    maxDepth: 8, // 9 levels deep (0-based index)
+                    as: "tree",
+                },
+            },
+        ]);
+
+        if (!userTree.length) return res.status(404).json({ message: "User not found" });
+
+        // Convert to hierarchical structure
+        const rootUser = userTree[0];
+        const userMap = new Map();
+
+        // Map users by ID
+        [rootUser, ...rootUser.tree].forEach((user) => {
+            userMap.set(user._id.toString(), { ...user, children: [] });
         });
 
-        if (!user) return res.status(404).json({ message: 'User not found' });
+        // Assign children to parents
+        userMap.forEach((user) => {
+            user.downlines.forEach((childId) => {
+                if (userMap.has(childId.toString())) {
+                    userMap.get(user._id.toString()).children.push(userMap.get(childId.toString()));
+                }
+            });
+        });
 
-        res.status(200).json(user);
+        res.status(200).json(userMap.get(rootUser._id.toString()));
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
