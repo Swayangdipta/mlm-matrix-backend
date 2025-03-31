@@ -5,6 +5,9 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const DepositRequests = require('../models/DepositRequests');
 const { default: mongoose } = require('mongoose');
+const PDFDocument = require("pdfkit");
+const fs = require("fs");
+const Company = require('../models/Company');
 
 // Helper function to distribute earnings to uplines
 const distributeEarnings = async (userId) => {
@@ -105,6 +108,7 @@ exports.registerUser = async (req, res) => {
         });
 
         sponsorr.downlines?.push(user._id);
+        sponsorr.freeSlots -= 1; // Decrease the free slots of the sponsor
 
         await user.save();
         await sponsorr.save();
@@ -152,6 +156,18 @@ exports.login = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+
+// Logout Function
+
+exports.logout = async (req,res) => {
+    try {
+        res.clearCookie("token")
+
+        return res.status(200).json({message: 'Logout Successfull'})
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
 
 // Withdrawal Route
 exports.withdraw = async (req, res) => {
@@ -287,4 +303,158 @@ exports.postDepositRequest = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 
+}
+
+function generateMLMPdf(userData, outputPath) {
+    const doc = new PDFDocument({ size: "A4", margin: 50 });
+
+    // Save PDF to file
+    doc.pipe(fs.createWriteStream(outputPath));
+
+    // Define fonts & styles
+    doc.fontSize(18).fillColor("black").text("Printable Form", { align: "center" }).moveDown(2);
+
+    userData.forEach((user, index) => {
+        doc.fontSize(20).fillColor("red").text(`${user.level}`, { continued: true });
+        doc.fontSize(12).fillColor("black").text(`  Name: ${user.name}`);
+        doc.text(`  Address: ${user.address}`);
+        
+        doc.fontSize(10).fillColor("red").text(`  ID No: ${user.id}`);
+        doc.text(`  Mobile: ${user.mobile}`);
+        doc.text(`  Bank A/c No.: ${user.bankAccount}`);
+        doc.text(`  IFSC: ${user.ifsc}`);
+
+        doc.moveDown();
+    });
+
+    // Finalize and close the document
+    doc.end();
+}
+
+// Sample Data
+const sampleUsers = [
+    { level: 1, name: "Rinku Bajaj", address: "Sains Market, Kohara Road, Sahnewal Ludhiana", id: "QUICK02451", mobile: "985566607", bankAccount: "12345641233", ifsc: "1315KK44640" },
+    { level: 2, name: "Rinku Bajaj", address: "Sains Market, Kohara Road, Sahnewal Ludhiana", id: "QUICK02451", mobile: "985566607", bankAccount: "12345641233", ifsc: "1315KK44640" },
+    // Add more users as needed
+];
+
+// Generate the PDF
+generateMLMPdf(sampleUsers, "mlm_printable_form.pdf");
+
+
+exports.generatePdfForm = async (req, res) => {
+    const { sponsor } = req.params;
+
+    try {
+        let uplines = []
+
+        let currentUser = await User
+            .findById(sponsor)
+            .populate('sponsor', '_id name email');
+
+        while (currentUser) {
+            uplines.push(currentUser);
+            currentUser = await User
+                .findById(currentUser.sponsor)
+                .populate('sponsor', '_id name email');
+        }
+
+        const doc = new PDFDocument({ margin: 50 });
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", "attachment; filename=mlm_printable_form.pdf");
+
+        // Generate PDF for the user data
+        doc.pipe(res);
+
+        // Function to draw a bordered box with padding
+        const drawEntryBox = (y) => {
+            doc.rect(40, y, 520, 100).stroke(); // Increased height for padding
+        };
+
+        let level = 0
+
+        uplines.forEach((user) => {
+            const y = doc.y; // Get the Y position before writing
+            drawEntryBox(y); // Draw border
+
+            const paddingX = 50; // Left padding
+            const paddingY = y + 10; // Top padding
+
+            // Left Column: Name & Address (Shifted Right)
+            doc.fontSize(18 - level).fillColor("red").text(`${user.level}. Name: ${user.name || "N/A"}`, paddingX, paddingY);
+            doc.text(`Address: ${user.address || "N/A"}`, paddingX, paddingY + 20);
+
+            // Right Column: Bank, Mobile, ID (Shifted Right)
+            doc.fontSize(15 - level).fillColor("red").text(`ID No: ${user.referralCode || "N/A"}`, 360, paddingY);
+            doc.text(`Mobile: ${user.mobile || "N/A"}`, 360, paddingY + 20);
+            doc.text(`Bank A/c No.: ${user.bankAccount || "N/A"}`, 360, paddingY + 40);
+            doc.text(`IFSC: ${user.ifsc || "N/A"}`, 360, paddingY + 60);
+
+            doc.moveDown(2); // Space after each entry
+            level++
+        });
+
+        // Empty slots for new joinings (A, B, C)
+        ["A", "B", "C"].forEach((label) => {
+            const y = doc.y; // Get the current Y position
+            drawEntryBox(y); // Draw border
+
+            const paddingX = 50;
+            const paddingY = y + 10;
+
+            doc.fontSize(12).fillColor("red").text(`${label}. Name: ______________________`, paddingX, paddingY);
+            doc.text(`Address: ______________________`, paddingX, paddingY + 20);
+
+            doc.fillColor("red").text("ID No: ______________________", 360, paddingY);
+            doc.text("Mobile: ______________________", 360, paddingY + 20);
+            doc.text("Bank A/c No.: _______________", 360, paddingY + 40);
+            doc.text("IFSC: ______________________", 360, paddingY + 60);
+
+            doc.moveDown(2);
+        });
+
+        doc.end();
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
+
+exports.payToCompany = async (req, res) => {
+    const {userId} = req.params
+    try {
+        const [company, user] = await Promise.all([
+            Company.findOne({}), // Assuming there's only one company document
+            User.findById(userId)
+        ]);
+
+        if (!company) return res.status(404).json({ message: 'Company data not found' });
+        if (!user) return res.status(404).json({ message: 'User data not found' });
+
+        if(user.walletBalance < 1500) return res.status(400).json({ message: 'Insufficient balance' });
+
+        company.totalEarnings += 1500;
+        user.walletBalance -= 1500; // Deduct from user's wallet balance
+        user.lastPayment = new Date(); // Update last payment date
+        user.freeSlots = 3
+        await company.save();
+        await user.save()
+
+        res.status(200).json({ message: 'Payment to company successful', totalEarnings: company.totalEarnings });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
+
+exports.getFreeSlotsCount = async (req, res) => {
+    const {userId} = req.params
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        res.status(200).json({ freeSlots: user.freeSlots });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 }
