@@ -306,7 +306,7 @@ exports.postDepositRequest = async (req, res) => {
 }
 
 function generateMLMPdf(userData, outputPath) {
-    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const doc = new PDFDocument({ size: "A4", margin: 10 });
 
     // Save PDF to file
     doc.pipe(fs.createWriteStream(outputPath));
@@ -331,15 +331,8 @@ function generateMLMPdf(userData, outputPath) {
     doc.end();
 }
 
-// Sample Data
-const sampleUsers = [
-    { level: 1, name: "Rinku Bajaj", address: "Sains Market, Kohara Road, Sahnewal Ludhiana", id: "QUICK02451", mobile: "985566607", bankAccount: "12345641233", ifsc: "1315KK44640" },
-    { level: 2, name: "Rinku Bajaj", address: "Sains Market, Kohara Road, Sahnewal Ludhiana", id: "QUICK02451", mobile: "985566607", bankAccount: "12345641233", ifsc: "1315KK44640" },
-    // Add more users as needed
-];
-
 // Generate the PDF
-generateMLMPdf(sampleUsers, "mlm_printable_form.pdf");
+// generateMLMPdf(sampleUsers, "mlm_printable_form.pdf");
 
 
 exports.generatePdfForm = async (req, res) => {
@@ -359,6 +352,8 @@ exports.generatePdfForm = async (req, res) => {
                 .populate('sponsor', '_id name email');
         }
 
+        uplines.reverse()
+
         const doc = new PDFDocument({ margin: 50 });
 
         res.setHeader("Content-Type", "application/pdf");
@@ -374,31 +369,39 @@ exports.generatePdfForm = async (req, res) => {
 
         let level = 0
 
-        uplines.forEach((user) => {
-            const y = doc.y; // Get the Y position before writing
-            drawEntryBox(y); // Draw border
+        const pageHeight = doc.page.height - doc.page.margins.top - doc.page.margins.bottom;
+        const boxHeight = 100; // Height of each entry box
 
-            const paddingX = 50; // Left padding
-            const paddingY = y + 10; // Top padding
+        uplines.forEach((user, index) => {
+            if (doc.y + boxHeight > pageHeight) {
+                doc.addPage(); // Add new page if the next entry would exceed the page height
+            }
 
-            // Left Column: Name & Address (Shifted Right)
-            doc.fontSize(18 - level).fillColor("red").text(`${user.level}. Name: ${user.name || "N/A"}`, paddingX, paddingY);
+            const y = doc.y;
+            drawEntryBox(y);
+
+            const paddingX = 50;
+            const paddingY = y + 10;
+
+            doc.fontSize(18 - (index/2)).fillColor("red").text(`${user.level}. Name: ${user.name || "N/A"}`, paddingX, paddingY);
             doc.text(`Address: ${user.address || "N/A"}`, paddingX, paddingY + 20);
 
-            // Right Column: Bank, Mobile, ID (Shifted Right)
-            doc.fontSize(15 - level).fillColor("red").text(`ID No: ${user.referralCode || "N/A"}`, 360, paddingY);
+            doc.fontSize(15 - (index/2)).fillColor("red").text(`ID No: ${user.referralCode || "N/A"}`, 360, paddingY);
             doc.text(`Mobile: ${user.mobile || "N/A"}`, 360, paddingY + 20);
             doc.text(`Bank A/c No.: ${user.bankAccount || "N/A"}`, 360, paddingY + 40);
             doc.text(`IFSC: ${user.ifsc || "N/A"}`, 360, paddingY + 60);
 
-            doc.moveDown(2); // Space after each entry
-            level++
+            doc.moveDown(2);
         });
 
         // Empty slots for new joinings (A, B, C)
         ["A", "B", "C"].forEach((label) => {
-            const y = doc.y; // Get the current Y position
-            drawEntryBox(y); // Draw border
+            if (doc.y + boxHeight > pageHeight) {
+                doc.addPage();
+            }
+
+            const y = doc.y;
+            drawEntryBox(y);
 
             const paddingX = 50;
             const paddingY = y + 10;
@@ -414,7 +417,7 @@ exports.generatePdfForm = async (req, res) => {
             doc.moveDown(2);
         });
 
-        doc.end();
+        doc.end()
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -456,5 +459,13 @@ exports.getFreeSlotsCount = async (req, res) => {
         res.status(200).json({ freeSlots: user.freeSlots });
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+}
+
+exports.searchDownline = async (req,res) => {
+    try {
+        
+    } catch (error) {
+        res.status(500).json({message: error.message})
     }
 }
