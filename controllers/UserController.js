@@ -199,6 +199,7 @@ exports.getDashboard = async (req, res) => {
             username: user.username,
             level: user.level,
             earnings: user.earnings,
+            selfEarning: user.selfEarning || 0,
             walletBalance: user.walletBalance,
             downlines: user.downlines.length,
             referralCode: user.referralCode,
@@ -440,6 +441,7 @@ exports.payToCompany = async (req, res) => {
         user.walletBalance -= 1500; // Deduct from user's wallet balance
         user.lastPayment = new Date(); // Update last payment date
         user.freeSlots = 3
+        user.selfEarning = (user.selfEarning || 0) + 300
         await company.save();
         await user.save()
 
@@ -462,10 +464,57 @@ exports.getFreeSlotsCount = async (req, res) => {
     }
 }
 
-exports.searchDownline = async (req,res) => {
+const getDownlineTree = async (userId) => {
+    const user = await User.findById(userId).populate('downlines', 'name username referralCode level mobile email walletBalance downlines');
+    if (!user) return null;
+
+    const downlineTree = await Promise.all(user.downlines.map(async (downline) => {
+        const subtree = await getDownlineTree(downline._id);
+        return { ...downline._doc, downlines: subtree };
+    }));
+
+    return downlineTree;
+};
+
+const searchInDownlineTree = (downlineTree, query) => {
+    return downlineTree.filter(user =>
+        user.name.includes(query) ||
+        user.mobile.includes(query) ||
+        user.referralCode.includes(query) ||
+        (user.downlines && searchInDownlineTree(user.downlines, query).length > 0)
+    ).map(user => ({
+        ...user,
+        downlines: searchInDownlineTree(user.downlines || [], query)
+    }));
+};
+
+exports.searchDownline = async (req, res) => {
     try {
+        const { userId, query } = req.body;
+
+        const user = await User.findById(userId);
+        console.log(userId);
         
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        console.log(1);
+        
+
+        const downlineTree = await getDownlineTree(user._id);
+        console.log(downlineTree);
+        
+        const filteredDownline = searchInDownlineTree(downlineTree, query);
+        console.log(2);
+        console.log(filteredDownline);
+        
+        if(filteredDownline.length === 0) {
+            return res.status(404).json({message: 'Faild to search downline.'})
+        }
+
+        res.status(200).json({ downlines: filteredDownline });
     } catch (error) {
-        res.status(500).json({message: error.message})
+        res.status(500).json({ message: error.message });
     }
-}
+};

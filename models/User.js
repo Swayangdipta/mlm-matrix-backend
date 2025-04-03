@@ -10,6 +10,9 @@ const userSchema = new mongoose.Schema({
     level: { type: Number, default: 1 },
     downlines: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     earnings: { type: Number, default: 0 },
+    selfEarning: {
+        type: Number, default: 0
+    },
     walletBalance: { type: Number, default: 0 },
     rewards: [{ type: String }],
     registrationDate: { type: Date, default: Date.now },
