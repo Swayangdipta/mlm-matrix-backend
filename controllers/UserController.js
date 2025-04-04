@@ -150,7 +150,12 @@ exports.login = async (req, res) => {
             referralCode: user.referralCode,
             rewards: user.rewards,
             sponsor: user.sponsor,
-            isAdmin: user.isAdmin
+            isAdmin: user.isAdmin,
+            address: user.address,
+            bankName: user.bankName,
+            accountNumber: user.accountNumber,
+            ifscCode: user.ifscCode,
+            accountHolderName: user.accountHolderName,
         } });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -591,3 +596,61 @@ exports.getDownlineLength = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 }
+
+exports.updateProfile = async (req, res) => {
+    const { name, username, email, mobile, address, bankName, accountNumber, ifscCode, upiNumber } = req.body;
+    
+    try {        
+        const user = await User.findById(req.params.userId);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        // Update user details
+        user.name = name || user.name || user.username;
+        user.username = username || user.username;
+        user.email = email || user.email;
+        user.mobile = mobile || user.mobile;
+        user.address = address || user.address || 'Not Provided';
+        user.bankName = bankName || user.bankName || 'Not Provided';
+        user.accountHolderName = name || user.accountHolderName || 'Not Provided';
+        user.accountNumber = accountNumber || user.accountNumber || 'Not Provided';
+        user.ifscCode = ifscCode || user.ifscCode || 'Not Provided';
+        user.upiNumber = upiNumber || user.upiNumber || 'Not Provided';
+        
+        await user.save();
+
+        user.password = undefined
+        user.__v = undefined
+
+        res.json({ message: 'Profile updated successfully', user });
+
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.changePassword = async (req, res) => {
+    const { newPassword } = req.body;
+
+    try { 
+        const user = await User.findById(req.params.userId);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        // const isMatch = await bcrypt.compare(oldPassword, user.password);
+        // if (!isMatch) return res.status(400).json({ message: 'Old password is incorrect' });
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({ message: 'New password must be at least 6 characters' });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        user.password = hashedPassword;
+
+        await user.save();
+        res.json({ message: 'Password updated successfully' });
+
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ message: error.message });
+    }
+};

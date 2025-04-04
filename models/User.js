@@ -20,6 +20,12 @@ const userSchema = new mongoose.Schema({
     isAdmin: { type: Boolean, default: false },
     lastPayment: { type: Date },
     freeSlots: { type: Number, default: 0 },
+    address: { type: String },
+    bankName: { type: String },
+    accountNumber: { type: String },
+    ifscCode: { type: String },
+    accountHolderName: { type: String },
+    upiNumber: { type: String },
 });
 
 module.exports = mongoose.model('User', userSchema);
