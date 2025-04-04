@@ -26,6 +26,7 @@ const userSchema = new mongoose.Schema({
     ifscCode: { type: String },
     accountHolderName: { type: String },
     upiNumber: { type: String },
+    selectedProducts: [{ type: String}]
 });
 
 module.exports = mongoose.model('User', userSchema);

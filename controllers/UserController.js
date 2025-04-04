@@ -8,6 +8,7 @@ const { default: mongoose } = require('mongoose');
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const Company = require('../models/Company');
+const ProductRequests = require('../models/ProductRequests');
 
 // Helper function to distribute earnings to uplines
 const distributeEarnings = async (userId) => {
@@ -83,7 +84,7 @@ const promoteUser = async (user) => {
 
 // User Registration
 exports.registerUser = async (req, res) => {
-    const { username, sponsor, password, email, mobile, fullname } = req.body;
+    const { username, sponsor, password, email, mobile, fullname, products } = req.body;
     try {        
         const hashedPassword = await bcrypt.hash(password, 10);
         const referralCode = uuidv4().slice(0, 8);
@@ -104,13 +105,20 @@ exports.registerUser = async (req, res) => {
             rewards: [],
             email,
             mobile,
-            name: fullname
+            name: fullname,
+            selectedProducts: products,
         });
 
         sponsorr.downlines?.push(user._id);
         sponsorr.freeSlots -= 1; // Decrease the free slots of the sponsor
-
+        const produtRequest = new ProductRequests({
+            userId: user._id,
+            productName: products,
+            status: 'pending'
+        })
+        
         await user.save();
+        await produtRequest.save()
         await sponsorr.save();
 
         await distributeEarnings(user._id);
