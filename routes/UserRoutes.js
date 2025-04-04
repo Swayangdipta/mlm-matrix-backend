@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const {registerUser,login, withdraw, getUserTree, getDashboard, getUpline, postDepositRequest, generatePdfForm, payToCompany, getFreeSlotsCount, searchDownline, getUser} = require('../controllers/UserController');
+const {registerUser,login, withdraw, getUserTree, getDashboard, getUpline, postDepositRequest, generatePdfForm, payToCompany, getFreeSlotsCount, searchDownline, getUser, getDownlineLength} = require('../controllers/UserController');
 
 router.post('/register', registerUser);
 router.post('/login', login);
@@ -14,6 +14,7 @@ router.get('/gen-pdf/:sponsor', generatePdfForm);
 router.post('/pay-comapny/:userId', payToCompany)
 router.get('/free-slots/:userId', getFreeSlotsCount)
 router.post('/search', searchDownline)
+router.post('/downline-count', getDownlineLength)
 
 
 module.exports = router;
