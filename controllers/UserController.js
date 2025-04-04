@@ -580,3 +580,14 @@ exports.getUser = async (req,res) => {
         res.status(500).json({ message: error.message });
     }
 }
+
+exports.getDownlineLength = async (req, res) => {
+    try {
+        const downlineList = await getDownlineList(req.body.userId);
+        const downlineCount = downlineList.length;
+
+        res.status(200).json({ downlineCount });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
