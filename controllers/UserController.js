@@ -307,122 +307,136 @@ exports.postDepositRequest = async (req, res) => {
 }
 
 function generateMLMPdf(userData, outputPath) {
-    const doc = new PDFDocument({ size: "A4", margin: 10 });
+    const doc = new PDFDocument({ size: "A4", margin: 30 });
 
     // Save PDF to file
     doc.pipe(fs.createWriteStream(outputPath));
 
-    // Define fonts & styles
-    doc.fontSize(18).fillColor("black").text("Printable Form", { align: "center" }).moveDown(2);
+    // Header
+    doc.fontSize(18).fillColor("black").text("Printable Form", { align: "center" }).moveDown(1.5);
+
+    // Layout Constants
+    const startX = doc.page.margins.left;
+    let y = doc.y;
 
     userData.forEach((user, index) => {
-        doc.fontSize(20).fillColor("red").text(`${user.level}`, { continued: true });
-        doc.fontSize(12).fillColor("black").text(`  Name: ${user.name}`);
-        doc.text(`  Address: ${user.address}`);
-        
-        doc.fontSize(10).fillColor("red").text(`  ID No: ${user.id}`);
-        doc.text(`  Mobile: ${user.mobile}`);
-        doc.text(`  Bank A/c No.: ${user.bankAccount}`);
-        doc.text(`  IFSC: ${user.ifsc}`);
+        const leftX = startX;
+        const rightX = 320;
 
-        doc.moveDown();
+        // Left Column (basic info)
+        doc.fontSize(12).fillColor("black").text(`${user.level}`, leftX, y);
+        doc.fontSize(10).text(`Name: ${user.name}`, leftX + 25, y);
+        y += 15;
+        doc.text(`Mobile: ${user.mobile}`, leftX + 25, y);
+        y += 15;
+        doc.fillColor("red").text(`ID No: ${user.id}`, leftX + 25, y);
+        y += 15;
+
+        // Right Column (bank info)
+        doc.fillColor("black").fontSize(10).text(`Bank A/c No.: ${user.bankAccount}`, rightX, y - 30);
+        doc.text(`IFSC: ${user.ifsc}`, rightX, y - 15);
+
+        // Gap before next user
+        y += 20;
+
+        // Add page break if going too far down
+        if (y > doc.page.height - 60) {
+            doc.addPage();
+            y = doc.y;
+        }
     });
 
-    // Finalize and close the document
     doc.end();
 }
 
 // Generate the PDF
 // generateMLMPdf(sampleUsers, "mlm_printable_form.pdf");
 
-
 exports.generatePdfForm = async (req, res) => {
     const { sponsor } = req.params;
 
     try {
-        let uplines = []
+        let uplines = [];
 
         let currentUser = await User
             .findById(sponsor)
-            .populate('sponsor', '_id name email');
+            .populate('sponsor', '_id name email level');
 
         while (currentUser) {
             uplines.push(currentUser);
             currentUser = await User
                 .findById(currentUser.sponsor)
-                .populate('sponsor', '_id name email');
+                .populate('sponsor', '_id name email level');
         }
 
-        uplines.reverse()
+        uplines.reverse();
 
-        const doc = new PDFDocument({ margin: 50 });
+        const doc = new PDFDocument({ margin: 30 });
 
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", "attachment; filename=mlm_printable_form.pdf");
 
-        // Generate PDF for the user data
         doc.pipe(res);
 
-        // Function to draw a bordered box with padding
-        const drawEntryBox = (y) => {
-            doc.rect(40, y, 520, 100).stroke(); // Increased height for padding
-        };
-
-        let level = 0
-
+        // Page and layout constants
+        const boxHeight = 60;
         const pageHeight = doc.page.height - doc.page.margins.top - doc.page.margins.bottom;
-        const boxHeight = 100; // Height of each entry box
+        const maxPerPage = Math.floor(pageHeight / boxHeight); // typically 12
+        let y = doc.page.margins.top;
 
-        uplines.forEach((user, index) => {
-            if (doc.y + boxHeight > pageHeight) {
-                doc.addPage(); // Add new page if the next entry would exceed the page height
-            }
+        let level = 1;
 
-            const y = doc.y;
-            drawEntryBox(y);
+        const allEntries = [
+            ...uplines.map(user => ({
+                level: user.level,
+                name: user.name,
+                mobile: user.mobile,
+                referralCode: user.referralCode,
+                bankAccount: user.bankAccount,
+                ifsc: user.ifsc
+            })),
+            ...["A", "B", "C"].map(label => ({
+                label: `${label}.`,
+                name: "______________________",
+                mobile: "______________________",
+                referralCode: "______________________",
+                bankAccount: "______________________",
+                ifsc: "______________________"
+            }))
+        ];
 
-            const paddingX = 50;
-            const paddingY = y + 10;
+        for (let i = 0; i < allEntries.length; i++) {
+            const entry = allEntries[i];
 
-            doc.fontSize(18 - (index/2)).fillColor("red").text(`${user.level}. Name: ${user.name || "N/A"}`, paddingX, paddingY);
-            doc.text(`Address: ${user.address || "N/A"}`, paddingX, paddingY + 20);
-
-            doc.fontSize(15 - (index/2)).fillColor("red").text(`ID No: ${user.referralCode || "N/A"}`, 360, paddingY);
-            doc.text(`Mobile: ${user.mobile || "N/A"}`, 360, paddingY + 20);
-            doc.text(`Bank A/c No.: ${user.bankAccount || "N/A"}`, 360, paddingY + 40);
-            doc.text(`IFSC: ${user.ifsc || "N/A"}`, 360, paddingY + 60);
-
-            doc.moveDown(2);
-        });
-
-        // Empty slots for new joinings (A, B, C)
-        ["A", "B", "C"].forEach((label) => {
-            if (doc.y + boxHeight > pageHeight) {
+            if (y + boxHeight > pageHeight + doc.page.margins.top) {
                 doc.addPage();
+                y = doc.page.margins.top;
             }
 
-            const y = doc.y;
-            drawEntryBox(y);
+            // Draw border box
+            doc.rect(30, y, 540, boxHeight).stroke();
 
-            const paddingX = 50;
-            const paddingY = y + 10;
+            // Content positions
+            const leftX = 40;
+            const rightX = 310;
+            const lineY = y + 8;
 
-            doc.fontSize(12).fillColor("red").text(`${label}. Name: ______________________`, paddingX, paddingY);
-            doc.text(`Address: ______________________`, paddingX, paddingY + 20);
+            doc.fontSize(10).fillColor("red").text(`${entry.level} Name: ${entry.name}`, leftX, lineY);
+            doc.fillColor("black").text(`Mobile: ${entry.mobile}`, leftX, lineY + 14);
 
-            doc.fillColor("red").text("ID No: ______________________", 360, paddingY);
-            doc.text("Mobile: ______________________", 360, paddingY + 20);
-            doc.text("Bank A/c No.: _______________", 360, paddingY + 40);
-            doc.text("IFSC: ______________________", 360, paddingY + 60);
+            doc.fillColor("red").text(`ID: ${entry.referralCode}`, rightX, lineY);
+            doc.fillColor("black").text(`A/c No.: ${entry.bankAccount}`, rightX, lineY + 14);
+            doc.text(`IFSC: ${entry.ifsc}`, rightX, lineY + 28);
 
-            doc.moveDown(2);
-        });
+            // Manually move to next box
+            y += boxHeight;
+        }
 
-        doc.end()
+        doc.end();
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
-}
+};
 
 exports.payToCompany = async (req, res) => {
     const {userId} = req.params
