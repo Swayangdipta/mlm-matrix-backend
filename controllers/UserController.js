@@ -464,29 +464,53 @@ exports.getFreeSlotsCount = async (req, res) => {
     }
 }
 
-const getDownlineTree = async (userId) => {
-    const user = await User.findById(userId).populate('downlines', 'name username referralCode level mobile email walletBalance downlines');
-    if (!user) return null;
+const getDownlineList = async (userId, downlineList = []) => {
+    const user = await User.findById(userId)
+        .populate({
+            path: 'downlines',
+            select: 'name username referralCode level mobile email walletBalance downlines sponsor',
+            populate: {
+                path: 'sponsor',
+                select: 'referralCode _id' // Populate sponsor with only referralCode
+            }
+        });
 
-    const downlineTree = await Promise.all(user.downlines.map(async (downline) => {
-        const subtree = await getDownlineTree(downline._id);
-        return { ...downline._doc, downlines: subtree };
-    }));
+    if (!user) return [];
 
-    return downlineTree;
+    for (const downline of user.downlines) {
+        downlineList.push({
+            _id: downline._id,
+            name: downline.name,
+            username: downline.username,
+            referralCode: downline.referralCode,
+            level: downline.level,
+            mobile: downline.mobile,
+            email: downline.email,
+            walletBalance: downline.walletBalance,
+            sponsor: downline.sponsor ? {
+                referralCode: downline.sponsor.referralCode,
+                _id: downline.sponsor._id
+            } : null // Store only referralCode of sponsor
+        });
+
+        await getDownlineList(downline._id, downlineList); // Recursively fetch downlines
+    }
+
+    return downlineList;
 };
 
-const searchInDownlineTree = (downlineTree, query) => {
-    return downlineTree.filter(user =>
-        user.name.includes(query) ||
-        user.mobile.includes(query) ||
-        user.referralCode.includes(query) ||
-        (user.downlines && searchInDownlineTree(user.downlines, query).length > 0)
-    ).map(user => ({
-        ...user,
-        downlines: searchInDownlineTree(user.downlines || [], query)
-    }));
+
+const searchInDownlineList = (downlineList, query) => {
+    return downlineList
+        .filter(user =>
+            user?.fullname?.includes(query) ||
+            user?.mobile?.includes(query) ||
+            user?.referralCode?.includes(query) ||
+            user?.username?.includes(query)
+        )
+        .slice(0, 10); // Return only the top 5 results
 };
+
 
 exports.searchDownline = async (req, res) => {
     try {
@@ -499,15 +523,9 @@ exports.searchDownline = async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        console.log(1);
+        const downlineTree = await getDownlineList(user._id);
         
-
-        const downlineTree = await getDownlineTree(user._id);
-        console.log(downlineTree);
-        
-        const filteredDownline = searchInDownlineTree(downlineTree, query);
-        console.log(2);
-        console.log(filteredDownline);
+        const filteredDownline = searchInDownlineList(downlineTree, query);
         
         if(filteredDownline.length === 0) {
             return res.status(404).json({message: 'Faild to search downline.'})
@@ -518,3 +536,33 @@ exports.searchDownline = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+
+
+exports.getUser = async (req,res) => {
+    const { referralCode } = req.params;
+    
+    try {
+        const user = await User.findById(referralCode).populate('downlines', 'name referralCode mobile earnings selfEarnings username');
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const downlineTree = await getDownlineList(user._id);
+
+
+        res.status(200).json({
+            username: user.username,
+            level: user.level,
+            earnings: user.earnings,
+            selfEarning: user.selfEarning || 0,
+            walletBalance: user.walletBalance,
+            downlines: user.downlines,
+            referralCode: user.referralCode,
+            isAchiever: user.isAchiever || false,
+            rewards: user.rewards,
+            totalTeam: downlineTree.length,
+            name: user.name,
+            email: user.email,
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}

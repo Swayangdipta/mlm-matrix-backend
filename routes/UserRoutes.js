@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const {registerUser,login, withdraw, getUserTree, getDashboard, getUpline, postDepositRequest, generatePdfForm, payToCompany, getFreeSlotsCount, searchDownline} = require('../controllers/UserController');
+const {registerUser,login, withdraw, getUserTree, getDashboard, getUpline, postDepositRequest, generatePdfForm, payToCompany, getFreeSlotsCount, searchDownline, getUser} = require('../controllers/UserController');
 
 router.post('/register', registerUser);
 router.post('/login', login);
 router.post('/withdraw', withdraw);
 router.get('/tree/:userId', getUserTree);
 router.get('/dashboard/:username', getDashboard);
+router.get('/get-user/:referralCode', getUser);
 router.get('/uplines/:sponsor', getUpline);
 router.post('/deposit', postDepositRequest);
 router.get('/gen-pdf/:sponsor', generatePdfForm);
