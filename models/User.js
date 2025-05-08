@@ -26,7 +26,13 @@ const userSchema = new mongoose.Schema({
     ifscCode: { type: String },
     accountHolderName: { type: String },
     upiNumber: { type: String },
-    selectedProducts: [{ type: String}]
+    selectedProducts: [{ type: String}],
+    credits: [],
+    withdrawals: [],
+    aadharFront: { type: String },
+    aadharBack: { type: String },
+    pancard: { type: String },
+    status: { type: String, default: 'inactive' }
 });
 
 module.exports = mongoose.model('User', userSchema);

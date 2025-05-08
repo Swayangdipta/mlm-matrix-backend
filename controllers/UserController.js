@@ -9,6 +9,7 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const Company = require('../models/Company');
 const ProductRequests = require('../models/ProductRequests');
+const cloudinary = require('cloudinary').v2;
 
 // Helper function to distribute earnings to uplines
 const distributeEarnings = async (userId) => {
@@ -227,7 +228,6 @@ exports.getDashboard = async (req, res) => {
 // Get User Tree
 exports.getUserTree = async (req, res) => {
     const { userId } = req.params;
-    console.log(userId);
     
     try {
         const userTree = await User.aggregate([
@@ -469,6 +469,11 @@ exports.payToCompany = async (req, res) => {
         user.lastPayment = new Date(); // Update last payment date
         user.freeSlots = 3
         user.selfEarning = (user.selfEarning || 0) + 300
+        user.withdrawals.push({
+            amount: 1500,
+            date: new Date(),
+            paidTo: 'Company',
+        })
         await company.save();
         await user.save()
 
@@ -495,7 +500,7 @@ const getDownlineList = async (userId, downlineList = []) => {
     const user = await User.findById(userId)
         .populate({
             path: 'downlines',
-            select: 'name username referralCode level mobile email walletBalance downlines sponsor',
+            select: 'name username referralCode level mobile email walletBalance downlines sponsor status',
             populate: {
                 path: 'sponsor',
                 select: 'referralCode _id' // Populate sponsor with only referralCode
@@ -517,7 +522,8 @@ const getDownlineList = async (userId, downlineList = []) => {
             sponsor: downline.sponsor ? {
                 referralCode: downline.sponsor.referralCode,
                 _id: downline.sponsor._id
-            } : null // Store only referralCode of sponsor
+            } : null, // Store only referralCode of sponsor,
+            status: downline.status || 'inactive',
         });
 
         await getDownlineList(downline._id, downlineList); // Recursively fetch downlines
@@ -538,6 +544,38 @@ const searchInDownlineList = (downlineList, query) => {
         .slice(0, 10); // Return only the top 5 results
 };
 
+exports.getWholeDownline = async (req, res) => {
+    const downline = await getDownlineList(req.params.userId);
+
+    if (!downline) return res.status(404).json({ message: 'Downline not found' });
+
+    res.status(200).json(downline);
+}
+
+exports.getDirectDownline = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.userId).populate('sponsor','referralCode _id').populate('downlines', 'name referralCode mobile earnings selfEarnings username');
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const downline = user.downlines.map(downline => ({
+            _id: downline._id,
+            name: downline.name,
+            referralCode: downline.referralCode,
+            mobile: downline.mobile,
+            earnings: downline.earnings,
+            selfEarnings: downline.selfEarnings || 0,
+            username: downline.username,
+            status: downline.status || 'inactive',
+            sponsor: {referralCode: user.referralCode}
+        }));
+
+        if (downline.length === 0) return res.status(404).json({ message: 'No direct downlines found' });
+
+        res.status(200).json(downline);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
 
 exports.searchDownline = async (req, res) => {
     try {
@@ -605,37 +643,80 @@ exports.getDownlineLength = async (req, res) => {
     }
 }
 
+// Ensure Cloudinary config is set
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 exports.updateProfile = async (req, res) => {
-    const { name, username, email, mobile, address, bankName, accountNumber, ifscCode, upiNumber } = req.body;
-    
-    try {        
-        const user = await User.findById(req.params.userId);
-        if (!user) return res.status(404).json({ message: 'User not found' });
+  const {
+    name,
+    username,
+    email,
+    mobile,
+    address,
+    bankName,
+    accountNumber,
+    ifscCode,
+    upiNumber,
+    section
+  } = req.body;
 
-        // Update user details
-        user.name = name || user.name || user.username;
-        user.username = username || user.username;
-        user.email = email || user.email;
-        user.mobile = mobile || user.mobile;
-        user.address = address || user.address || 'Not Provided';
-        user.bankName = bankName || user.bankName || 'Not Provided';
-        user.accountHolderName = name || user.accountHolderName || 'Not Provided';
-        user.accountNumber = accountNumber || user.accountNumber || 'Not Provided';
-        user.ifscCode = ifscCode || user.ifscCode || 'Not Provided';
-        user.upiNumber = upiNumber || user.upiNumber || 'Not Provided';
-        
-        await user.save();
+  try {
+    const user = await User.findById(req.params.userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
-        user.password = undefined
-        user.__v = undefined
-
-        res.json({ message: 'Profile updated successfully', user });
-
-    } catch (error) {
-        console.log(error);
-        res.status(500).json({ message: error.message });
+    // Section-specific update logic
+    if (section === 'personal') {
+      user.name = name || user.name || user.username;
+      user.username = username || user.username;
+      user.email = email || user.email;
+      user.mobile = mobile || user.mobile;
     }
+
+    if (section === 'address') {
+      user.address = address || user.address || 'Not Provided';
+    }
+
+    if (section === 'bank') {
+      user.bankName = bankName || user.bankName || 'Not Provided';
+      user.accountHolderName = name || user.accountHolderName || 'Not Provided';
+      user.accountNumber = accountNumber || user.accountNumber || 'Not Provided';
+      user.ifscCode = ifscCode || user.ifscCode || 'Not Provided';
+      user.upiNumber = upiNumber || user.upiNumber || 'Not Provided';
+    }
+
+    if (section === 'kyc') {
+      // Handle file uploads (aadharFront, aadharBack, pancard)
+      const fileFields = ['aadharFront', 'aadharBack', 'pancard'];
+      for (const field of fileFields) {
+        if (req.files && req.files[field]) {
+          const file = req.files[field][0];
+          const upload = await cloudinary.uploader.upload(file.path, {
+            folder: 'kyc_documents'
+          });
+
+          console.log(field, upload.secure_url);
+          
+          user[field] = upload.secure_url;
+        }
+      }
+    }
+
+    await user.save();
+
+    user.password = undefined;
+    user.__v = undefined;
+
+    res.json({ message: 'Profile updated successfully', user });
+  } catch (error) {
+    console.error('Profile update error:', error);
+    res.status(500).json({ message: error.message });
+  }
 };
+
 
 exports.changePassword = async (req, res) => {
     const { newPassword } = req.body;

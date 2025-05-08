@@ -62,6 +62,13 @@ exports.approveAndCreditDeposit = async (req, res) => {
         // Credit user wallet
         const user = await User.findById(depositRequest.user);
         user.walletBalance += depositRequest.amount;
+        user.credits.push({
+            amount: depositRequest.amount,
+            date: new Date(),
+            type: 'Deposit',
+            status: 'approved',
+            transactionId: depositRequest._id // Assuming the deposit request ID is used as a transaction ID
+        });
         await user.save();
 
         res.status(200).json({ message: 'Deposit request approved and user wallet credited' });
