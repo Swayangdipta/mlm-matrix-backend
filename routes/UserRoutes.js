@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const {registerUser,login, withdraw, getUserTree, getDashboard, getUpline, postDepositRequest, generatePdfForm, payToCompany, getFreeSlotsCount, searchDownline, getUser, getDownlineLength, updateProfile, changePassword, getWholeDownline, getDirectDownline} = require('../controllers/UserController');
+const {registerUser,login, withdraw, getUserTree, getDashboard, getUpline, postDepositRequest, generatePdfForm, payToCompany, getFreeSlotsCount, searchDownline, getUser, getDownlineLength, updateProfile, changePassword, getWholeDownline, getDirectDownline, getUserPaymentHistory, payIndividual} = require('../controllers/UserController');
 const upload = require('../middlewares/upload');
 
 router.post('/register', registerUser);
@@ -9,6 +9,8 @@ router.post('/withdraw', withdraw);
 router.get('/tree/:userId', getUserTree);
 router.get('/dashboard/:username', getDashboard);
 router.get('/get-user/:referralCode', getUser);
+router.get('/payment-status/:userId', getUserPaymentHistory);
+router.post('/pay/:userId', payIndividual);
 router.get('/downlines/:userId', getWholeDownline);
 router.get('/downline/direct/:userId', getDirectDownline);
 router.get('/uplines/:sponsor', getUpline);

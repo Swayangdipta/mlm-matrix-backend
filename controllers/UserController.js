@@ -643,6 +643,86 @@ exports.getDownlineLength = async (req, res) => {
     }
 }
 
+exports.getUserPaymentHistory = async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const user = await User.findById(userId).select('payment_status');
+
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        let paymentHistory = user.payment_status || {
+            level1: false,
+            level2: false,
+            level3: false,
+            level4: false,
+            level5: false,
+            level6: false,
+            level7: false,
+            level8: false,
+            level9: false,
+            company: false,
+        };
+
+        res.status(200).json(paymentHistory);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.payIndividual = async (req, res) => {
+    const { userId } = req.params;
+    const { amount, recipient, level } = req.body;
+
+    try {
+        const user = await User.findById(userId);
+        const toBePaidTo = await User.findById(recipient);
+
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        if (!toBePaidTo) return res.status(404).json({ message: 'Recipient not found' });
+
+        if (user.payment_status[`level${level}`]) {
+            return res.status(400).json({ message: 'Payment already made for this level' });
+        }
+
+        if (user.walletBalance < amount) {
+            return res.status(400).json({ message: 'Insufficient balance' });
+        }
+
+        // Perform payment
+        user.walletBalance -= amount;
+        user.payment_status[`level${level}`] = true;
+
+        toBePaidTo.walletBalance += amount;
+        toBePaidTo.earnings += amount;
+
+        user.withdrawals.push({
+            amount,
+            date: new Date(),
+            paidTo: toBePaidTo.username,
+        });
+
+        toBePaidTo.credits.push({
+            amount,
+            date: new Date(),
+            paidFrom: user.username,
+        });
+
+        await Promise.all([
+            user.save(),
+            toBePaidTo.save(),
+        ]);
+
+        return res.status(200).json({
+            message: 'Payment successful',
+            remainingBalance: user.walletBalance
+        });
+
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+};
+
+
 // Ensure Cloudinary config is set
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
